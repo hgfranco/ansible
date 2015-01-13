@@ -1,0 +1,16 @@
+---
+- name: Move the rpms over to the box
+  sudo: yes
+  copy: "src={{ item }} dest=/tmp/{{ item }} mode=755"
+  with_items: 
+  - epel-release-6-8.noarch.rpm
+  - remi-release-6.rpm
+  - nginx-centos-6.rpm
+
+- name: Install repo RPMs
+  sudo: yes
+  yum: "name={{ item }} state=present"
+  with_items: 
+  - "/tmp/epel-release-6-8.noarch.rpm"
+  - "/tmp/remi-release-6.rpm"
+  - "/tmp/nginx-centos-6.rpm"

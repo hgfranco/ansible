@@ -1,5 +1,4 @@
 ---
 - hosts: util
-  tasks:
-  - include_vars: "~/.util.yml"
-    tags: util_production
+  roles:
+  - repositories
