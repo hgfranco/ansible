@@ -1,0 +1,3 @@
+---
+- name: Add github.com to the known_hosts file
+  shell: ssh-keyscan -H github.com > /home/vagrant/.ssh/known_hosts
