@@ -1,6 +1,6 @@
 ---
-- hosts: util
+- hosts: www
   roles:
   - common
   - repositories
-  - vagrant
+  - mysql

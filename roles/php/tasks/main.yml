@@ -1,0 +1,10 @@
+---
+- name: Install PHP common package
+  sudo: yes
+  yum: name=php-common state=latest
+  tags: php_install
+
+- name: Install PHP FPM (FastCGI Process Manager) package
+  sudo: yes
+  yum: name=php-fpm state=latest
+  tags: php_install 

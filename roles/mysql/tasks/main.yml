@@ -1,0 +1,5 @@
+---
+- name: Install MySQL
+  sudo: yes
+  yum: name=mysql-server state=latest
+  tags: mysql_install

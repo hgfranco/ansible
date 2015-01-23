@@ -1,0 +1,7 @@
+---
+- name: Install necessary packages with Yum
+  sudo: yes
+  yum: name={{ item }} state=latest
+  with_items:
+  - vim
+  tags: common_install
