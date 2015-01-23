@@ -1,0 +1,31 @@
+---
+- name: Create Temp Wordpress directory
+  file: path=/tmp/wordpress state=directory
+  tags: wordpress_install
+
+- name: Delete the Wordpress temp files
+  shell: rm -rf /tmp/wordpress/*
+  tags: wordpress_install
+
+- name: Download Wordpress
+  get_url: url=https://wordpress.org/latest.zip dest=/tmp/wordpress
+  tags: wordpress_install
+
+- name: Get the Wordpress file name
+  shell: "ls /tmp/wordpress/"
+  register: wordpress_zipfile
+  tags: wordpress_install
+
+- name: Create Wordpress directory
+  sudo: yes
+  file: path={{ wordpress_directory }} state=directory
+  tags: wordpress_install
+
+- name: Unarchive Wordpress
+  unarchive: copy=no src=/tmp/wordpress/{{ wordpress_zipfile.stdout }} dest=/tmp/wordpress/
+  tags: wordpress_install
+
+- name: Move Wordpress into html directory
+  sudo: yes
+  shell: mv /tmp/wordpress/wordpress/* {{ wordpress_directory }}
+  tags: wordpress_install
