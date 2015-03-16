@@ -1,12 +1,4 @@
 ---
-- name: Install necessary packages with Yum
-  sudo: yes
-  yum: name={{ item }} state=latest
-  with_items:
-  - vim
-  - python-pip
-  tags: local
-
 - name: Copy .gitconfig file to user
   copy: "src=.gitconfig dest=/home/vagrant/"
   tags: local

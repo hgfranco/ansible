@@ -1,7 +1,8 @@
 ---
-- hosts: www
+- hosts: www:www_dev
   roles:
   - common
   - repositories
+  - git_access
   - nginx
   - php
