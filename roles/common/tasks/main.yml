@@ -4,4 +4,5 @@
   yum: name={{ item }} state=latest
   with_items:
   - vim
+  - python-pip
   tags: common_install

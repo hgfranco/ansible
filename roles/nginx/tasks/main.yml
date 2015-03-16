@@ -4,10 +4,10 @@
   yum: name=nginx enablerepo=nginx state=latest
   tags: nginx_install
 
-- name: Start nginx
-  sudo: yes
-  service: name=nginx state=started enabled=yes
-  tags: nginx_install
+#- name: Start nginx
+#  sudo: yes
+#  service: name=nginx state=started enabled=yes
+#  tags: nginx_install
 
 #- name: Copy the nginx configuration file
 #  sudo: yes
