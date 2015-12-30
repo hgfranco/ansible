@@ -1,0 +1,11 @@
+---
+- include: Debian.yml
+  when: ansible_os_family == 'Debian'
+
+- name: Set hostname
+  hostname: name={{ inventory_hostname }}
+  sudo: yes
+
+- name: Copy hosts file
+  copy: src=hosts dest=/etc/hosts owner=root group=root mode=0644
+  sudo: yes

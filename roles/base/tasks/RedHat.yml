@@ -5,4 +5,4 @@
   with_items:
   - vim
   - python-pip
-  tags: common_install
+  - python-devel

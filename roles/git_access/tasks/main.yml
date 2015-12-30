@@ -1,43 +1,44 @@
 ---
+- name: Create git user
+  sudo: yes
+  user: name={{ item }} shell=/bin/bash groups=wheel append=yes
+  with_items: repo_user
+  tags: git_access
+
 - name: Copy .gitconfig file to user
-  copy: src=~/sandbox/ansible/roles/vagrant/files/.gitconfig dest=/home/{{ item }}/
-  with_items: users
+  sudo: yes
+  copy: src=.gitconfig dest=/home/{{ item }}/
+  with_items: repo_user
   tags: git_access
 
 - name: Create .ssh directory
   sudo: yes
-  file: path=/home/{{ item }}/.ssh/ owner={{ item }} group={{ item }} mode=600 state=directory
-  with_items: users
-  tags: git_access
-
-- name: Create .ssh/known_hosts file
-  sudo: yes
-  file: path=/home/{{ item}}/.ssh/ owner={{ item }} group={{ item }} mode=600 state=touch
-  with_items: users
+  file: path=/home/{{ item }}/.ssh/ owner={{ item }} group={{ item }} state=directory
+  with_items: repo_user
   tags: git_access
 
 - name: Add github.com to the known_hosts file
   sudo: yes
   shell: ssh-keyscan -H github.com > /home/{{ item }}/.ssh/known_hosts
-  with_items: users
+  with_items: repo_user
   tags: git_access
 
 - name: Copy the current hosts id_rsa.pub to users home folder
   sudo: yes
-  copy: "src=~/sandbox/ansible/roles/vagrant/files/id_rsa.pub dest=/home/{{ item }}/.ssh/id_rsa.pub owner={{ item }} group={{ item }} mode=600"
-  with_items: users
+  copy: "src=~/.ssh/git_repo_user.pub dest=/home/{{ item }}/.ssh/id_rsa.pub owner={{ item }} group={{ item }} mode=644"
+  with_items: repo_user
   tags: git_access
 
 - name: Copy the current hosts id_rsa to users home folder
   sudo: yes
-  copy: "src=~/sandbox/ansible/roles/vagrant/files/id_rsa dest=/home/{{ item }}/.ssh/id_rsa owner={{ item }} group={{ item }} mode=600"
-  with_items: users
+  copy: "src=~/.ssh/git_repo_user dest=/home/{{ item }}/.ssh/id_rsa owner={{ item }} group={{ item }} mode=600"
+  with_items: repo_user
   tags: git_access
 
 - name: Ensure users owns everything
   sudo: yes
   file: path=/home/{{ item }}/.ssh/ owner={{ item }} group={{ item }} state=directory recurse=yes
-  with_items: users
+  with_items: repo_user
   tags: git_access
 
 

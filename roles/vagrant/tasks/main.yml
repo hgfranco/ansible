@@ -1,4 +1,7 @@
 ---
+- include: Redhat.yml
+  when: ansible_os_family == 'Redhat'
+
 - name: Copy .gitconfig file to user
   copy: "src=.gitconfig dest=/home/vagrant/"
   tags: local
@@ -14,13 +17,11 @@
 
 - name: Copy the current hosts id_rsa to vagrant home folder
   sudo: yes
-  sudo_user: vagrant
   copy: "src=id_rsa dest=/home/vagrant/.ssh/id_rsa owner=vagrant group=vagrant mode=600"
   tags: local
 
 - name: Copy the vagrant insecure_private_key to vagrant home folder
   sudo: yes
-  sudo_user: vagrant
   copy: "src=~/.vagrant.d/insecure_private_key dest=/home/vagrant/.ssh/insecure_private_key owner=vagrant group=vagrant mode=600"
   tags: local
 
