@@ -1,0 +1,22 @@
+---
+- hosts: all
+  tasks:
+  - name: copy sudoers file to sudoers.ansible
+    sudo: yes
+    tags: sudo_mod
+    command: cp -f /etc/sudoers /etc/sudoers.ansible
+
+  - name: Create sudoers file backup
+    sudo: yes
+    tags: sudo_mod
+    command: cp -f /etc/sudoers /etc/sudoers.bak
+
+  - name: modify sudoers to allow sudo w/o tty
+    sudo: yes
+    tags: sudo_mod
+    shell: "sed -i 's/.*requiretty.*/Defaults !requiretty/g' /etc/sudoers.ansible"
+
+  - name: Final sudoers file check
+    sudo: yes
+    tags: sudo_mod
+    shell: "/usr/sbin/visudo -q -c -f /etc/sudoers.ansible && cp -f /etc/sudoers.ansible /etc/sudoers"
