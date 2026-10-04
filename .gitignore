@@ -1,0 +1,27 @@
+# Editor files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Local credentials and private keys
+.env
+.env.*
+!.env.example
+.aws/
+credentials
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.pem
+*.key
+
+# Local Python environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Ansible temporary files
+*.retry
