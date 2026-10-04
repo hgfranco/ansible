@@ -1,0 +1,38 @@
+---
+- name: Prepare self-managed Kubernetes nodes
+  hosts: kubernetes
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  pre_tasks:
+    - name: Verify the inventory selects a single control plane and workers
+      ansible.builtin.assert:
+        that:
+          - groups.get('control_plane', []) | length == 1
+          - groups.get('workers', []) | length >= 1
+          - groups['kubernetes'] | sort == (groups['control_plane'] + groups['workers']) | sort
+          - groups['kubernetes'] | length == (groups['kubernetes'] | unique | length)
+        fail_msg: Inventory must contain one control plane and at least one worker with no overlap.
+
+    - name: Validate the supported platform and private addressing
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.distribution == 'Ubuntu'
+          - ansible_facts.distribution_version == '24.04'
+          - ansible_facts.architecture == 'x86_64'
+          - private_ip_address is defined
+          - vpc_id is defined
+          - inventory_hostname is match('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
+          - inventory_hostname | length <= 63
+          - kubernetes_version is match('^1\.35\.[0-9]+$')
+        fail_msg: This bootstrap supports Ubuntu 24.04 amd64 nodes and Kubernetes 1.35.
+
+    - name: Validate pod service and host networks do not overlap
+      ansible.builtin.assert:
+        that:
+          - ([kubernetes_vpc_cidr, kubernetes_pod_cidr, kubernetes_service_cidr]) | kubeadm_networks_valid
+          - private_ip_address | kubeadm_address_in_network(kubernetes_vpc_cidr)
+          - vpc_id == hostvars[groups['control_plane'][0]].vpc_id
+        fail_msg: Use separate IPv4 CIDRs and nodes from the intended VPC.
+  roles:
+    - role: kubernetes_node

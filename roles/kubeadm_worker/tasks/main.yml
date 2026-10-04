@@ -1,0 +1,45 @@
+---
+- name: Check whether this worker has already joined
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubeadm_worker_config
+
+- name: Join a new worker without persisting the bootstrap token
+  when: not kubeadm_worker_config.stat.exists
+  block:
+    - name: Create a short-lived bootstrap token on the control plane
+      ansible.builtin.command:
+        argv: [kubeadm, token, create, '--ttl={{ kubernetes_join_token_ttl }}', --print-join-command]
+      delegate_to: "{{ groups['control_plane'][0] }}"
+      register: kubeadm_worker_join
+      changed_when: true
+      no_log: true
+
+    - name: Join using CA verification and the private endpoint
+      ansible.builtin.command:
+        argv: >-
+          {{ kubeadm_worker_join.stdout.split() +
+             ['--node-name', inventory_hostname, '--cri-socket', kubernetes_cri_socket] }}
+        creates: /etc/kubernetes/kubelet.conf
+      no_log: true
+  always:
+    - name: Revoke the temporary bootstrap token
+      ansible.builtin.command:
+        argv: [kubeadm, token, delete, "{{ kubeadm_worker_join.stdout.split()[4].split('.')[0] }}"]
+      delegate_to: "{{ groups['control_plane'][0] }}"
+      changed_when: true
+      no_log: true
+      when:
+        - kubeadm_worker_join is defined
+        - kubeadm_worker_join.stdout is defined
+        - kubeadm_worker_join.rc == 0
+
+- name: Verify the joined worker is registered in the intended cluster
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig=/etc/kubernetes/admin.conf, get, 'node/{{ inventory_hostname }}']
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  register: kubeadm_worker_registration
+  until: kubeadm_worker_registration.rc == 0
+  retries: 24
+  delay: 5
+  changed_when: false

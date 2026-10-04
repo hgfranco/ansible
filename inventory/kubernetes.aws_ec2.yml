@@ -1,0 +1,26 @@
+---
+plugin: amazon.aws.aws_ec2
+
+regions:
+  - us-east-1
+
+filters:
+  instance-state-name: running
+  tag:Project: kubernetes
+  tag:ManagedBy: Terraform
+  tag:Role:
+    - control-plane
+    - worker
+
+hostnames:
+  - tag:Name
+
+compose:
+  ansible_host: public_ip_address
+
+groups:
+  kubernetes: "true"
+  control_plane: "tags.Role == 'control-plane'"
+  workers: "tags.Role == 'worker'"
+
+strict: true
