@@ -1,6 +1,0 @@
----
-- name: Install development packages
-  sudo: yes
-  yum: name={{ item }} state=latest update_cache=yes
-  with_items:
-    - rubygems
