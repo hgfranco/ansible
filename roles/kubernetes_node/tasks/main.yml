@@ -53,8 +53,8 @@
 - name: Confirm the containerd configuration schema is supported
   ansible.builtin.assert:
     that:
-      - kubernetes_node_containerd_version.stdout is search('\s1\.7\.')
-    fail_msg: This role manages Ubuntu 24.04 containerd 1.7. Review its configuration before using another major version.
+      - kubernetes_node_containerd_version.stdout is search('\s2\.2\.\d+(?:\s|$)')
+    fail_msg: This role supports containerd 2.2.x with configuration version 3. Review other versions before proceeding.
   when: not ansible_check_mode
 
 - name: Persist required kernel modules
@@ -96,6 +96,7 @@
 - name: Configure containerd with CRI and systemd cgroups
   ansible.builtin.template:
     src: containerd.toml.j2
+    validate: 'containerd --config %s config dump'
     dest: /etc/containerd/config.toml
     owner: root
     group: root

@@ -1,11 +1,17 @@
-# Managed by Ansible. Ubuntu 24.04's containerd 1.7 configuration.
-version = 2
+# Managed by Ansible. Native containerd 2.2 configuration.
+version = 3
 
-[plugins."io.containerd.grpc.v1.cri"]
-  sandbox_image = "registry.k8s.io/pause:3.10.1"
+[plugins."io.containerd.cri.v1.images"]
+  snapshotter = "overlayfs"
 
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+[plugins."io.containerd.cri.v1.images".pinned_images]
+  sandbox = "registry.k8s.io/pause:3.10.1"
+
+[plugins."io.containerd.cri.v1.runtime".containerd]
+  default_runtime_name = "runc"
+
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc]
   runtime_type = "io.containerd.runc.v2"
 
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+[plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runc.options]
   SystemdCgroup = true
