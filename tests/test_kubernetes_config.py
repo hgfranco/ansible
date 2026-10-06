@@ -1,6 +1,10 @@
 """Offline checks for network safety, API addressing, and the CNI configuration."""
 import importlib.util
 import json
+import os
+import re
+import subprocess
+import tempfile
 from pathlib import Path
 import tomllib
 import unittest
@@ -86,9 +90,42 @@ class ConfigurationTests(unittest.TestCase):
     def test_containerd_enables_cri_systemd_cgroups_and_v2_runc(self):
         runtime = tomllib.loads(self.render("roles/kubernetes_node/templates/containerd.toml.j2"))
         self.assertNotIn("cri", runtime.get("disabled_plugins", []))
-        runc = runtime["plugins"]["io.containerd.grpc.v1.cri"]["containerd"]["runtimes"]["runc"]
+        self.assertEqual(runtime["version"], 3)
+        self.assertNotIn("io.containerd.grpc.v1.cri", runtime["plugins"])
+        images = runtime["plugins"]["io.containerd.cri.v1.images"]
+        self.assertEqual(images["pinned_images"]["sandbox"], "registry.k8s.io/pause:3.10.1")
+        runc = runtime["plugins"]["io.containerd.cri.v1.runtime"]["containerd"]["runtimes"]["runc"]
         self.assertEqual(runc["runtime_type"], "io.containerd.runc.v2")
         self.assertTrue(runc["options"]["SystemdCgroup"])
+
+    def test_version_guard_accepts_observed_output_and_rejects_other_schemas(self):
+        tasks = yaml.safe_load((ROOT / "roles/kubernetes_node/tasks/main.yml").read_text())
+        guard = next(task for task in tasks if task["name"] == "Confirm the containerd configuration schema is supported")
+        expression = guard["ansible.builtin.assert"]["that"][0]
+        pattern = expression.split("search('", 1)[1].rsplit("')", 1)[0]
+        self.assertIsNotNone(re.search(pattern, "containerd github.com/containerd/containerd/v2 2.2.1"))
+        for version in ["1.7.28", "2.1.0", "3.0.0", "2.20.1"]:
+            self.assertIsNone(re.search(pattern, "containerd github.com/containerd/containerd/v2 " + version))
+
+    @unittest.skipUnless(os.environ.get("CONTAINERD_TEST_BINARY"), "Native binary is supplied by CI")
+    def test_native_containerd_loads_expected_cri_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config.toml"
+            config.write_text(self.render("roles/kubernetes_node/templates/containerd.toml.j2"))
+            result = subprocess.run(
+                [os.environ["CONTAINERD_TEST_BINARY"], "--config", str(config), "config", "dump"],
+                check=True, capture_output=True, text=True,
+            )
+        loaded = tomllib.loads(result.stdout)
+        self.assertEqual(loaded["version"], 3)
+        self.assertNotIn("cri", loaded.get("disabled_plugins", []))
+        runtime = loaded["plugins"]["io.containerd.cri.v1.runtime"]["containerd"]
+        self.assertEqual(runtime["default_runtime_name"], "runc")
+        self.assertEqual(runtime["runtimes"]["runc"]["runtime_type"], "io.containerd.runc.v2")
+        self.assertTrue(runtime["runtimes"]["runc"]["options"]["SystemdCgroup"])
+        images = loaded["plugins"]["io.containerd.cri.v1.images"]
+        self.assertEqual(images["snapshotter"], "overlayfs")
+        self.assertEqual(images["pinned_images"]["sandbox"], "registry.k8s.io/pause:3.10.1")
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ compose:
 
 groups:
   kubernetes: "true"
-  control_plane: "tags.Role == 'control-plane'"
-  workers: "tags.Role == 'worker'"
+  control_plane: "ec2_tags.Role == 'control-plane'"
+  workers: "ec2_tags.Role == 'worker'"
 
 strict: true

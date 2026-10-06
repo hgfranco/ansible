@@ -48,5 +48,15 @@ jobs:
           ansible-playbook -i tests/inventory.yml -e @inventory/group_vars/kubernetes.yml playbooks/kubernetes.yml --syntax-check
           ansible-playbook -i tests/inventory.yml -e @inventory/group_vars/kubernetes.yml playbooks/fetch-kubeconfig.yml --syntax-check
 
+      - name: Download verified containerd binary for configuration validation
+        env:
+          RUNTIME_DIRECTORY: ${{ runner.temp }}/containerd-validation
+        run: |
+          mkdir -p "$RUNTIME_DIRECTORY"
+          curl --fail --location --retry 3 https://github.com/containerd/containerd/releases/download/v2.2.1/containerd-2.2.1-linux-amd64.tar.gz -o "$RUNTIME_DIRECTORY/containerd.tar.gz"
+          echo "f5d8e90ecb6c1c7e33ecddf8cc268a93b9e5b54e0e850320d765511d76624f41  $RUNTIME_DIRECTORY/containerd.tar.gz" | sha256sum --check
+          tar -xzf "$RUNTIME_DIRECTORY/containerd.tar.gz" -C "$RUNTIME_DIRECTORY" bin/containerd
+          echo "CONTAINERD_TEST_BINARY=$RUNTIME_DIRECTORY/bin/containerd" >> "$GITHUB_ENV"
+
       - name: Test network validation and rendered configuration
         run: python -m unittest discover -s tests -v

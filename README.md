@@ -31,7 +31,8 @@ Review [inventory/group_vars/kubernetes.yml](inventory/group_vars/kubernetes.yml
 - Kubernetes: 1.35.9, package revision 1.1, matching the CKA 1.35 minor version.
 - Calico: v3.32.2 with pinned SHA-256 manifest checksums.
 - VPC: 10.42.0.0/16; pods: 192.168.0.0/16; services: 10.96.0.0/12.
-- Containerd: Ubuntu 24.04's 1.7 package, with CRI and systemd cgroups.
+- Containerd: 2.2.x, with native configuration version 3, CRI, and systemd cgroups.
+  The role uses the installed Ubuntu package; it does not downgrade it.
 
 Network ranges must not overlap and must agree with Terraform. The playbook
 validates the network ranges and private node addresses. It refuses mismatched
@@ -43,6 +44,9 @@ API server. OS/containerd updates remain part of your package maintenance.
 The [inventory](inventory/kubernetes.aws_ec2.yml) selects running EC2 instances in
 us-east-1 tagged Project=kubernetes, ManagedBy=Terraform, and Role=control-plane
 or worker. Change these filters alongside Terraform's tags for another cluster.
+Groups use `ec2_tags.Role`. amazon.aws 11.4.0 still exports the deprecated `tags`
+alias and emits its deprecation notice unconditionally; the associated reserved
+variable warning can remain until the collection removes that alias.
 Only one cluster should match. Run with the full inventory rather than a partial
 --limit; workers need the control plane's host variables.
 
@@ -56,10 +60,11 @@ rebuild plan; these playbooks do not restore data.
 Use Ansible from your Mac with your normal SSH agent/configuration and local AWS
 profile. The AWS profile needs ec2:DescribeInstances. No credentials are in the repo.
 
-With your existing pipx installation:
+From the repository root, with your existing pipx installation (pipx requires an
+absolute requirements path because it runs pip from its virtual environment):
 
 ~~~bash
-pipx runpip ansible install -r requirements-controller.txt
+pipx runpip ansible install -r "$PWD/requirements-controller.txt"
 ansible-galaxy collection install -r requirements.yml
 ~~~
 
@@ -141,7 +146,9 @@ stays enabled. The existing security group allows SSH from the administrator's
 
 [GitHub Actions](.github/workflows/kubernetes-checks.yml) scans for secrets, lints
 the new playbooks, checks syntax with an offline inventory, and tests network
-validation and rendered kubeadm/Calico/containerd configuration. CI has no AWS
+validation and rendered kubeadm/Calico/containerd configuration. CI also loads the
+runtime configuration using checksum-verified containerd 2.2.1; the role validates
+it with the installed binary before replacing the configuration file. CI has no AWS
 credentials and never connects to the EC2 nodes. These checks validate the code;
 the first approved cluster run is still needed to verify runtime behavior.
 
