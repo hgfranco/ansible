@@ -1,0 +1,24 @@
+---
+ansible_user: ubuntu
+ansible_python_interpreter: /usr/bin/python3
+
+# Keep network values aligned with the Terraform environment.
+kubernetes_version: "1.35.9"
+kubernetes_package_revision: "1.1"
+kubernetes_vpc_cidr: "10.42.0.0/16"
+kubernetes_pod_cidr: "192.168.0.0/16"
+kubernetes_service_cidr: "10.96.0.0/12"
+kubernetes_cluster_name: kubernetes
+kubernetes_cri_socket: unix:///run/containerd/containerd.sock
+kubernetes_api_port: 6443
+kubernetes_api_cert_sans:
+  - "127.0.0.1"
+  - localhost
+kubernetes_join_token_ttl: 15m
+kubernetes_ready_timeout: 600s
+
+# Calico VXLAN provides pod networking and NetworkPolicy enforcement.
+# An existing cluster needs an explicit procedure before changing CNI versions.
+calico_version: "v3.32.2"
+calico_operator_checksum: "sha256:4e372754e4e1c3a61cf7c0ceb9bc9fff2f78aa6575dcadcb5ea4e716bb00dffa"
+calico_crds_checksum: "sha256:cb46786692404fb7955c6d31329c667d0dd8f1ff4821dc7869d0156c93d3a859"

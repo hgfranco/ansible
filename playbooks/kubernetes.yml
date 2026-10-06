@@ -1,0 +1,79 @@
+---
+- name: Prepare every node
+  ansible.builtin.import_playbook: prepare-kubernetes.yml
+
+- name: Initialize the self-managed control plane
+  hosts: control_plane
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  roles:
+    - role: kubeadm_control_plane
+      when: not ansible_check_mode
+    - role: calico
+      when: not ansible_check_mode
+
+- name: Join workers to the existing control plane
+  hosts: workers
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  serial: 1
+  roles:
+    - role: kubeadm_worker
+      when: not ansible_check_mode
+
+- name: Verify cluster readiness
+  hosts: control_plane
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Wait for each expected node to be Ready
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig=/etc/kubernetes/admin.conf
+          - wait
+          - --for=condition=Ready
+          - "node/{{ item }}"
+          - "--timeout={{ kubernetes_ready_timeout }}"
+      loop: "{{ groups['kubernetes'] }}"
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Wait for CoreDNS availability
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig=/etc/kubernetes/admin.conf
+          - --namespace=kube-system
+          - rollout
+          - status
+          - deployment/coredns
+          - "--timeout={{ kubernetes_ready_timeout }}"
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Wait for Calico availability
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig=/etc/kubernetes/admin.conf
+          - wait
+          - --for=condition=Available
+          - tigerastatus/calico
+          - "--timeout={{ kubernetes_ready_timeout }}"
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Report registered nodes
+      ansible.builtin.command:
+        argv: [kubectl, --kubeconfig=/etc/kubernetes/admin.conf, get, nodes, -o, wide]
+      register: kubernetes_nodes_result
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Display the node summary
+      ansible.builtin.debug:
+        var: kubernetes_nodes_result.stdout_lines
+      when: not ansible_check_mode

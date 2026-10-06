@@ -1,0 +1,82 @@
+---
+- name: Check whether the control plane is already initialized
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubeadm_control_plane_config
+
+- name: Inspect an existing cluster before changing its bootstrap configuration
+  when: kubeadm_control_plane_config.stat.exists
+  block:
+    - name: Read the existing kubeadm cluster configuration
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig=/etc/kubernetes/admin.conf
+          - --namespace=kube-system
+          - get
+          - configmap/kubeadm-config
+          - -o
+          - json
+      register: kubeadm_control_plane_existing
+      changed_when: false
+
+    - name: Refuse implicit cluster endpoint or network reconfiguration
+      ansible.builtin.assert:
+        that:
+          - kubeadm_control_plane_current.networking.podSubnet == kubernetes_pod_cidr
+          - kubeadm_control_plane_current.networking.serviceSubnet == kubernetes_service_cidr
+          - kubeadm_control_plane_current.controlPlaneEndpoint == private_ip_address ~ ':' ~ kubernetes_api_port
+          - kubeadm_control_plane_current.kubernetesVersion == 'v' ~ kubernetes_version
+        fail_msg: Existing cluster configuration differs. Use a reviewed migration or upgrade procedure.
+      vars:
+        kubeadm_control_plane_current: >-
+          {{ (kubeadm_control_plane_existing.stdout | from_json).data.ClusterConfiguration | from_yaml }}
+
+- name: Ensure the Kubernetes configuration directory exists
+  ansible.builtin.file:
+    path: /etc/kubernetes
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Render the kubeadm initialization configuration
+  ansible.builtin.template:
+    src: init.yml.j2
+    dest: /etc/kubernetes/kubeadm-init.yml
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Initialize the control plane once
+  ansible.builtin.command:
+    argv: [kubeadm, init, --config=/etc/kubernetes/kubeadm-init.yml]
+    creates: /etc/kubernetes/admin.conf
+  no_log: true
+
+- name: Wait for a healthy Kubernetes API
+  ansible.builtin.command:
+    argv: [kubectl, --kubeconfig=/etc/kubernetes/admin.conf, get, --raw=/readyz]
+  register: kubeadm_control_plane_health
+  until: kubeadm_control_plane_health.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false
+
+- name: Create the SSH user's kubeconfig directory
+  ansible.builtin.file:
+    path: "/home/{{ ansible_user }}/.kube"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0700'
+
+- name: Provide the SSH user with cluster admin access on the control plane
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "/home/{{ ansible_user }}/.kube/config"
+    remote_src: true
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  no_log: true

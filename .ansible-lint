@@ -1,0 +1,10 @@
+---
+profile: production
+exclude_paths:
+  - roles/base/
+  - roles/git_access/
+  - roles/mysql/
+  - roles/nginx/
+  - roles/repositories/
+  - roles/wordpress/
+  - sudotty/

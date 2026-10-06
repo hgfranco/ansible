@@ -1,0 +1,27 @@
+---
+- name: Compare the desired Calico manifest with the cluster
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig=/etc/kubernetes/admin.conf
+      - diff
+      - --server-side
+      - --field-manager=ansible-bootstrap
+      - -f
+      - "{{ calico_manifest_path }}"
+  register: calico_manifest_diff
+  changed_when: false
+  failed_when: calico_manifest_diff.rc not in [0, 1]
+
+- name: Apply a changed Calico manifest
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig=/etc/kubernetes/admin.conf
+      - apply
+      - --server-side
+      - --field-manager=ansible-bootstrap
+      - -f
+      - "{{ calico_manifest_path }}"
+  when: calico_manifest_diff.rc == 1
+  changed_when: true

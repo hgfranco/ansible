@@ -1,0 +1,50 @@
+---
+- name: Download pinned Calico operator manifests with checksums
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/{{ item.upstream }}"
+    dest: "/etc/kubernetes/{{ item.filename }}"
+    checksum: "{{ item.checksum }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - upstream: operator-crds.yaml
+      filename: calico-operator-crds.yaml
+      checksum: "{{ calico_crds_checksum }}"
+    - upstream: tigera-operator.yaml
+      filename: calico-operator.yaml
+      checksum: "{{ calico_operator_checksum }}"
+
+- name: Converge the operator CRDs before installing the operator
+  ansible.builtin.include_tasks: apply-manifest.yml
+  vars:
+    calico_manifest_path: /etc/kubernetes/calico-operator-crds.yaml
+
+- name: Wait for the Installation API to be established
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig=/etc/kubernetes/admin.conf
+      - wait
+      - --for=condition=Established
+      - crd/installations.operator.tigera.io
+      - --timeout=180s
+  changed_when: false
+
+- name: Converge the Tigera operator
+  ansible.builtin.include_tasks: apply-manifest.yml
+  vars:
+    calico_manifest_path: /etc/kubernetes/calico-operator.yaml
+
+- name: Render Calico VXLAN networking and policy configuration
+  ansible.builtin.template:
+    src: installation.yml.j2
+    dest: /etc/kubernetes/calico-installation.yaml
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Converge the Calico installation
+  ansible.builtin.include_tasks: apply-manifest.yml
+  vars:
+    calico_manifest_path: /etc/kubernetes/calico-installation.yaml

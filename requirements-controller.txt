@@ -1,0 +1,3 @@
+# Install with: pipx runpip ansible install -r requirements-controller.txt
+boto3==1.43.108
+botocore==1.43.108

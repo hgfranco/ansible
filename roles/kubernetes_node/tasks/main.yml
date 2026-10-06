@@ -1,0 +1,169 @@
+---
+- name: Gather installed package versions
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Refuse implicit Kubernetes upgrades or downgrades
+  ansible.builtin.assert:
+    that:
+      - >-
+        item not in ansible_facts.packages or
+        ansible_facts.packages[item][0].version == kubernetes_version ~ '-' ~ kubernetes_package_revision
+    fail_msg: Existing Kubernetes packages differ from the pin. Use an explicit kubeadm upgrade procedure.
+  loop: [kubeadm, kubelet, kubectl]
+
+- name: Set the node hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+    use: systemd
+
+- name: Ensure the hostname resolves locally
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s'
+    line: "127.0.1.1 {{ inventory_hostname }}"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Disable active swap
+  ansible.builtin.command: swapoff --all
+  when: ansible_facts.swaptotal_mb | int > 0
+  changed_when: true
+
+- name: Disable fstab swap entries across reboots
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(\s*[^#\s]\S*\s+\S+\s+swap\s+.*)$'
+    replace: '# Disabled by Ansible for Kubernetes: \1'
+
+- name: Install operating system prerequisites and containerd
+  ansible.builtin.apt:
+    name: [ca-certificates, gpg, apt-transport-https, containerd, conntrack, socat]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Read the installed containerd version
+  ansible.builtin.command: containerd --version
+  register: kubernetes_node_containerd_version
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Confirm the containerd configuration schema is supported
+  ansible.builtin.assert:
+    that:
+      - kubernetes_node_containerd_version.stdout is search('\s1\.7\.')
+    fail_msg: This role manages Ubuntu 24.04 containerd 1.7. Review its configuration before using another major version.
+  when: not ansible_check_mode
+
+- name: Persist required kernel modules
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/kubernetes.conf
+    content: |
+      overlay
+      br_netfilter
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Load required kernel modules
+  ansible.builtin.command:
+    argv: [modprobe, "{{ item }}"]
+  loop: [overlay, br_netfilter]
+  changed_when: false
+
+- name: Configure Kubernetes kernel networking
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-kubernetes.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Apply Kubernetes sysctls
+
+- name: Create containerd configuration directory
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure containerd with CRI and systemd cgroups
+  ansible.builtin.template:
+    src: containerd.toml.j2
+    dest: /etc/containerd/config.toml
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart containerd
+
+- name: Apply runtime and kernel changes before Kubernetes starts
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start containerd
+  ansible.builtin.systemd_service:
+    name: containerd
+    enabled: true
+    state: started
+
+- name: Create package keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Download the Kubernetes repository signing key
+  ansible.builtin.get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version.split('.')[:2] | join('.') }}/deb/Release.key"
+    dest: /etc/apt/keyrings/kubernetes.asc
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Configure the signed Kubernetes package repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/kubernetes.list
+    content: >-
+      deb [signed-by=/etc/apt/keyrings/kubernetes.asc]
+      https://pkgs.k8s.io/core:/stable:/v{{ kubernetes_version.split('.')[:2] | join('.') }}/deb/ /
+    owner: root
+    group: root
+    mode: '0644'
+  register: kubernetes_node_repository
+
+- name: Install the pinned kubeadm kubelet and kubectl packages
+  ansible.builtin.apt:
+    name:
+      - "kubeadm={{ kubernetes_version }}-{{ kubernetes_package_revision }}"
+      - "kubelet={{ kubernetes_version }}-{{ kubernetes_package_revision }}"
+      - "kubectl={{ kubernetes_version }}-{{ kubernetes_package_revision }}"
+    state: present
+    update_cache: "{{ kubernetes_node_repository.changed }}"
+
+- name: Hold Kubernetes packages for deliberate upgrades
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: [kubeadm, kubelet, kubectl]
+
+- name: Use the private EC2 IP for kubelet node registration
+  ansible.builtin.copy:
+    dest: /etc/default/kubelet
+    content: "KUBELET_EXTRA_ARGS=--node-ip={{ private_ip_address }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart kubelet
+
+- name: Enable kubelet for cluster initialization
+  ansible.builtin.systemd_service:
+    name: kubelet
+    enabled: true
+    state: started

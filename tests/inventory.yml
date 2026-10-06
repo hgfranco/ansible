@@ -1,0 +1,21 @@
+---
+all:
+  children:
+    kubernetes:
+      children:
+        control_plane:
+          hosts:
+            kubernetes-control:
+              ansible_host: 192.0.2.10
+              private_ip_address: 10.42.1.10
+              vpc_id: vpc-test
+        workers:
+          hosts:
+            kubernetes-worker-01:
+              ansible_host: 192.0.2.11
+              private_ip_address: 10.42.1.11
+              vpc_id: vpc-test
+            kubernetes-worker-02:
+              ansible_host: 192.0.2.12
+              private_ip_address: 10.42.1.12
+              vpc_id: vpc-test
