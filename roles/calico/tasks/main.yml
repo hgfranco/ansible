@@ -31,6 +31,20 @@
       - --timeout=180s
   changed_when: false
 
+# Server-side diff cannot preview namespaced resources until their namespace exists.
+- name: Stage the Tigera operator namespace manifest
+  ansible.builtin.copy:
+    src: operator-namespace.yml
+    dest: /etc/kubernetes/calico-operator-namespace.yaml
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Converge the namespace before comparing namespaced operator resources
+  ansible.builtin.include_tasks: apply-manifest.yml
+  vars:
+    calico_manifest_path: /etc/kubernetes/calico-operator-namespace.yaml
+
 - name: Converge the Tigera operator
   ansible.builtin.include_tasks: apply-manifest.yml
   vars:

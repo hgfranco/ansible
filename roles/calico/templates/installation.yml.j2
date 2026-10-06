@@ -9,6 +9,13 @@ spec:
       kubernetes: NodeInternalIP
     ipPools:
       - name: default-ipv4-ippool
+        # Explicit operator defaults keep the atomic pool list identical on reruns.
+        allowedUses:
+          - Workload
+          - Tunnel
+        assignmentMode: Automatic
+        disableBGPExport: false
+        disableNewAllocations: false
         blockSize: 26
         cidr: {{ kubernetes_pod_cidr | to_json }}
         encapsulation: VXLAN
