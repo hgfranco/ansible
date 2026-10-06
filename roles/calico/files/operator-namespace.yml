@@ -1,0 +1,9 @@
+---
+# Matches the namespace in the pinned upstream tigera-operator manifest.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tigera-operator
+  labels:
+    name: tigera-operator
+    pod-security.kubernetes.io/enforce: privileged
