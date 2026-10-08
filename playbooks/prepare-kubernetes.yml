@@ -4,6 +4,7 @@
   become: true
   gather_facts: true
   any_errors_fatal: true
+  serial: 1
   pre_tasks:
     - name: Verify the inventory selects a single control plane and workers
       ansible.builtin.assert:

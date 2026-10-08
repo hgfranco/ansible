@@ -72,6 +72,36 @@ The tested controller is ansible-core 2.21.4. Verify with ansible --version.
 Pass --private-key /path/to/FrancoTech.pem to commands if your agent/configuration
 does not already supply it. Keep private keys outside the repository.
 
+## ECR image authentication
+
+Terraform attaches an EC2 instance profile granting ECR authentication and pull
+access to the application repository. Enable the kubelet credential provider with
+`kubernetes_node_ecr_credential_provider_enabled` in the Kubernetes group variables.
+The role defaults to disabled for environments that do not use ECR.
+
+The v1.35.0 binary download is unavailable upstream, so build the official release
+from the commit pinned in [the Dockerfile](build/ecr-credential-provider/Dockerfile).
+Docker builds a static Linux amd64 binary without installing Go on the controller.
+From the repository root:
+
+~~~bash
+docker buildx build --target artifact \
+  --output type=local,dest=.artifacts/ecr-credential-provider/v1.35.0 \
+  build/ecr-credential-provider
+shasum -a 256 .artifacts/ecr-credential-provider/v1.35.0/ecr-credential-provider
+~~~
+
+The checksum must match `kubernetes_ecr_credential_provider_sha256` before
+provisioning. Ansible verifies the local file before copying it to each node;
+compiled artifacts are ignored by Git. A fresh clone requires this build step.
+If changing the source or toolchain, review the new checksum deliberately.
+
+Preparation installs the helper and its configuration, adds kubelet's credential
+provider flags, and preserves `--node-ip`. Nodes are prepared one at a time.
+Changes notify a kubelet restart; an unchanged repeat run does not restart it.
+The helper obtains temporary ECR credentials using the node IAM role. No AWS
+access keys or ECR passwords are stored in the repository or provider config.
+
 ## Run one stage at a time
 
 The commands below are for an approved manual run. GitHub Actions does not execute

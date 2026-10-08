@@ -25,3 +25,6 @@ __pycache__/
 
 # Ansible temporary files
 *.retry
+
+# Locally built binaries
+/.artifacts/

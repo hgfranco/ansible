@@ -1,0 +1,2 @@
+---
+kubernetes_node_ecr_credential_provider_enabled: false
