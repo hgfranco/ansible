@@ -22,3 +22,8 @@ kubernetes_ready_timeout: 600s
 calico_version: "v3.32.2"
 calico_operator_checksum: "sha256:4e372754e4e1c3a61cf7c0ceb9bc9fff2f78aa6575dcadcb5ea4e716bb00dffa"
 calico_crds_checksum: "sha256:cb46786692404fb7955c6d31329c667d0dd8f1ff4821dc7869d0156c93d3a859"
+
+# ECR credential provider built from the pinned upstream release.
+kubernetes_node_ecr_credential_provider_enabled: true
+kubernetes_ecr_credential_provider_version: "v1.35.0"
+kubernetes_ecr_credential_provider_sha256: "c7c6c148edba4697f631666ff48196c0715c50ef515a1760cd9affa560a7ffae"

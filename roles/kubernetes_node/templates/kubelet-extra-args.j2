@@ -1,0 +1,1 @@
+KUBELET_EXTRA_ARGS="--node-ip={{ private_ip_address }}{% if kubernetes_node_ecr_credential_provider_enabled | bool %} --image-credential-provider-bin-dir=/usr/local/libexec/kubelet-credential-providers --image-credential-provider-config=/etc/kubernetes/credential-providers/ecr.yaml{% endif %}"

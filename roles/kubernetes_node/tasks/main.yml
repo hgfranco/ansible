@@ -154,10 +154,14 @@
     selection: hold
   loop: [kubeadm, kubelet, kubectl]
 
+- name: Set up the ECR credential provider
+  ansible.builtin.import_tasks: ecr-credential-provider.yml
+  when: kubernetes_node_ecr_credential_provider_enabled | bool
+
 - name: Use the private EC2 IP for kubelet node registration
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: kubelet-extra-args.j2
     dest: /etc/default/kubelet
-    content: "KUBELET_EXTRA_ARGS=--node-ip={{ private_ip_address }}\n"
     owner: root
     group: root
     mode: '0644'

@@ -1,0 +1,14 @@
+title = "Ansible repository secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Verified public SHA-256 of the locally built ECR credential provider"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^inventory/group_vars/kubernetes\.yml$''']
+regexes = ['''^c7c6c148edba4697f631666ff48196c0715c50ef515a1760cd9affa560a7ffae$''']
