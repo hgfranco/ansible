@@ -118,6 +118,8 @@ ansible-playbook -i localhost, playbooks/install-ebs-csi.yml
 
 Helm and kubectl must be available in PATH. The playbook uses Ansible's own Python
 environment for the post-renderer; no system Python packages are required.
+Helm 4 loads it as a repository plugin registered through an isolated, ignored
+.artifacts/helm-plugins directory, preserving your normal Helm plugins.
 Override the kubeconfig with `-e ebs_csi_kubeconfig=/absolute/path/to/config`.
 The command explicitly selects the kubeconfig and does not depend on a shell alias.
 

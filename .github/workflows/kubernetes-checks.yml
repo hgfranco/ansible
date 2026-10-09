@@ -59,7 +59,8 @@ jobs:
       - name: Render and validate the pinned EBS chart
         run: |
           helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
-          helm template aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver --version 2.66.1 --namespace kube-system --kube-version 1.35.9 --values helm/ebs-csi-driver/values.yaml --post-renderer helm/ebs-csi-driver/post-renderer > "$RUNNER_TEMP/ebs-rendered.yaml"
+          helm plugin install ./helm/ebs-csi-driver
+          helm template aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver --version 2.66.1 --namespace kube-system --kube-version 1.35.9 --values helm/ebs-csi-driver/values.yaml --post-renderer ebs-csi-host-network > "$RUNNER_TEMP/ebs-rendered.yaml"
           python tests/validate_ebs_chart.py "$RUNNER_TEMP/ebs-rendered.yaml"
 
       - name: Download verified containerd binary for configuration validation

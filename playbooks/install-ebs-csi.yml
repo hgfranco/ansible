@@ -9,6 +9,9 @@
     ebs_csi_chart_version: "2.66.1"
     ebs_csi_kubeconfig: "{{ lookup('ansible.builtin.env', 'HOME') }}/.kube/kubernetes-admin.conf"
     ebs_csi_timeout: 600s
+  environment:
+    HELM_PLUGINS: "{{ playbook_dir }}/../.artifacts/helm-plugins"
+    EBS_CSI_PYTHON: "{{ ansible_playbook_python }}"
   tasks:
     - name: Check the local cluster kubeconfig exists
       ansible.builtin.stat:
@@ -20,6 +23,18 @@
         that:
           - ebs_csi_kubeconfig_stat.stat.isreg | default(false)
         fail_msg: Fetch the cluster kubeconfig and start the SSH tunnel before installing the driver.
+
+    - name: Create an isolated Helm plugin directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../.artifacts/helm-plugins"
+        state: directory
+        mode: "0700"
+
+    - name: Register the repository post-renderer plugin
+      ansible.builtin.file:
+        src: "{{ playbook_dir }}/../helm/ebs-csi-driver"
+        dest: "{{ playbook_dir }}/../.artifacts/helm-plugins/ebs-csi-host-network"
+        state: link
 
     - name: Register the official EBS CSI chart repository
       kubernetes.core.helm_repository:
@@ -35,13 +50,11 @@
         kubeconfig: "{{ ebs_csi_kubeconfig }}"
         values_files:
           - "{{ playbook_dir }}/../helm/ebs-csi-driver/values.yaml"
-        post_renderer: "{{ playbook_dir }}/../helm/ebs-csi-driver/post-renderer"
+        post_renderer: ebs-csi-host-network
         update_repo_cache: true
         reset_values: true
         wait: true
         timeout: "{{ ebs_csi_timeout }}"
-      environment:
-        EBS_CSI_PYTHON: "{{ ansible_playbook_python }}"
 
     - name: Verify the EBS driver registration
       ansible.builtin.command:
