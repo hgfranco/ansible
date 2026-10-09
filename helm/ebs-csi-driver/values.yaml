@@ -1,0 +1,7 @@
+# EBS driver uses the EC2 node role; no AWS access keys are supplied.
+controller:
+  region: us-east-1
+  replicaCount: 1
+node:
+  hostNetwork: true
+  enableWindows: false

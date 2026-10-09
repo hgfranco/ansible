@@ -42,11 +42,25 @@ jobs:
         run: >-
           ansible-lint playbooks/prepare-kubernetes.yml
           playbooks/kubernetes.yml playbooks/fetch-kubeconfig.yml
+          playbooks/install-ebs-csi.yml
 
       - name: Check syntax using offline inventory
         run: |
           ansible-playbook -i tests/inventory.yml -e @inventory/group_vars/kubernetes.yml playbooks/kubernetes.yml --syntax-check
           ansible-playbook -i tests/inventory.yml -e @inventory/group_vars/kubernetes.yml playbooks/fetch-kubeconfig.yml --syntax-check
+
+          ansible-playbook -i localhost, playbooks/install-ebs-csi.yml --syntax-check
+
+      - name: Set up pinned Helm for chart validation
+        uses: azure/setup-helm@v4
+        with:
+          version: v4.3.0
+
+      - name: Render and validate the pinned EBS chart
+        run: |
+          helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+          helm template aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver --version 2.66.1 --namespace kube-system --kube-version 1.35.9 --values helm/ebs-csi-driver/values.yaml --post-renderer helm/ebs-csi-driver/post-renderer > "$RUNNER_TEMP/ebs-rendered.yaml"
+          python tests/validate_ebs_chart.py "$RUNNER_TEMP/ebs-rendered.yaml"
 
       - name: Download verified containerd binary for configuration validation
         env:

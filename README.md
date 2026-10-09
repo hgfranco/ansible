@@ -20,7 +20,7 @@ does not reset an existing cluster. Existing web/database roles are separate fro
 the Kubernetes playbooks.
 
 This setup supports Ubuntu 24.04 amd64 and one control plane. It is not highly
-available. It does not yet provide etcd backups, PostgreSQL storage, EBS CSI, or
+available. It does not yet provide etcd backups, PostgreSQL storage or
 cloud start/stop automation. The live Spotify site remains outside this setup.
 EKS manages its control plane: do not run these kubeadm playbooks against EKS nodes.
 
@@ -101,6 +101,47 @@ provider flags, and preserves `--node-ip`. Nodes are prepared one at a time.
 Changes notify a kubelet restart; an unchanged repeat run does not restart it.
 The helper obtains temporary ECR credentials using the node IAM role. No AWS
 access keys or ECR passwords are stored in the repository or provider config.
+
+## EBS CSI persistent-storage prerequisite
+
+This optional stage installs EBS CSI chart 2.66.1 (driver 1.66.1) from your Mac,
+using Helm 4.3.0 and the separate admin kubeconfig. It is not part of kubeadm
+bootstrap and does not create application volumes or change the live Render site.
+
+Apply the Terraform node-role policy attachment first. Install Helm and the pinned
+collections, start the SSH tunnel, then run from this repository root:
+
+~~~bash
+ansible-galaxy collection install -r requirements.yml
+ansible-playbook -i localhost, playbooks/install-ebs-csi.yml
+~~~
+
+Helm and kubectl must be available in PATH. The playbook uses Ansible's own Python
+environment for the post-renderer; no system Python packages are required.
+Override the kubeconfig with `-e ebs_csi_kubeconfig=/absolute/path/to/config`.
+The command explicitly selects the kubeconfig and does not depend on a shell alias.
+
+Review [values.yaml](helm/ebs-csi-driver/values.yaml): the region is us-east-1,
+there is one controller replica, and the Linux node plugin uses host networking.
+This cluster uses EC2 instance-role credentials and an IMDSv2 hop limit of 1.
+The pinned chart has no controller hostNetwork value, so the post-renderer enables
+host networking and ClusterFirstWithHostNet DNS on its controller Deployment.
+This gives the driver IMDS access without increasing the node metadata hop limit.
+The Linux node plugin is privileged because it mounts disks on the hosts.
+
+The node role is shared by the current cluster nodes. Use a dedicated workload
+identity for a future EKS deployment rather than carrying this credential model
+into production. One controller replica is a cost-conscious choice, not an HA
+configuration. Kubernetes RBAC comes from the upstream chart; no AWS keys are saved.
+
+The playbook reconciles the Helm release and waits for readiness and Linux
+DaemonSet rollout. Repeat it to verify an unchanged run reports no release change.
+The StorageClass, PVC, and application migration remain separate CKA storage steps.
+CI checks chart rendering and playbook syntax only; runtime disk provisioning must
+be verified against the cluster after review.
+
+- [Upstream installation and IMDS requirements](https://github.com/kubernetes-sigs/aws-ebs-csi-driver/blob/v1.66.1/docs/install.md)
+- [Helm module](https://docs.ansible.com/projects/ansible/latest/collections/kubernetes/core/helm_module.html)
 
 ## Run one stage at a time
 
