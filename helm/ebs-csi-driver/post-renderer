@@ -1,0 +1,3 @@
+#!/bin/sh
+# Use the same Python environment as Ansible (which includes PyYAML).
+exec "${EBS_CSI_PYTHON:-python3}" "$(dirname "$0")/post-renderer.py"

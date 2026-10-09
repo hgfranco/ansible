@@ -1,0 +1,81 @@
+---
+- name: Install the EBS CSI driver from the controller machine
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    ebs_csi_chart_version: "2.66.1"
+    ebs_csi_kubeconfig: "{{ lookup('ansible.builtin.env', 'HOME') }}/.kube/kubernetes-admin.conf"
+    ebs_csi_timeout: 600s
+  environment:
+    HELM_PLUGINS: "{{ playbook_dir }}/../.artifacts/helm-plugins"
+    EBS_CSI_PYTHON: "{{ ansible_playbook_python }}"
+  tasks:
+    - name: Check the local cluster kubeconfig exists
+      ansible.builtin.stat:
+        path: "{{ ebs_csi_kubeconfig }}"
+      register: ebs_csi_kubeconfig_stat
+
+    - name: Require the selected cluster kubeconfig
+      ansible.builtin.assert:
+        that:
+          - ebs_csi_kubeconfig_stat.stat.isreg | default(false)
+        fail_msg: Fetch the cluster kubeconfig and start the SSH tunnel before installing the driver.
+
+    - name: Create an isolated Helm plugin directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../.artifacts/helm-plugins"
+        state: directory
+        mode: "0700"
+
+    - name: Register the repository post-renderer plugin
+      ansible.builtin.file:
+        src: "{{ playbook_dir }}/../helm/ebs-csi-driver"
+        dest: "{{ playbook_dir }}/../.artifacts/helm-plugins/ebs-csi-host-network"
+        state: link
+
+    - name: Register the official EBS CSI chart repository
+      kubernetes.core.helm_repository:
+        name: aws-ebs-csi-driver
+        repo_url: https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+
+    - name: Install or reconcile the pinned EBS CSI release
+      kubernetes.core.helm:
+        release_name: aws-ebs-csi-driver
+        release_namespace: kube-system
+        chart_ref: aws-ebs-csi-driver/aws-ebs-csi-driver
+        chart_version: "{{ ebs_csi_chart_version }}"
+        kubeconfig: "{{ ebs_csi_kubeconfig }}"
+        values_files:
+          - "{{ playbook_dir }}/../helm/ebs-csi-driver/values.yaml"
+        post_renderer: ebs-csi-host-network
+        update_repo_cache: true
+        reset_values: true
+        wait: true
+        timeout: "{{ ebs_csi_timeout }}"
+
+    - name: Verify the EBS driver registration
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - "--kubeconfig={{ ebs_csi_kubeconfig }}"
+          - get
+          - csidriver
+          - ebs.csi.aws.com
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Wait for the Linux node driver rollout
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - "--kubeconfig={{ ebs_csi_kubeconfig }}"
+          - --namespace=kube-system
+          - rollout
+          - status
+          - daemonset/ebs-csi-node
+          - "--timeout={{ ebs_csi_timeout }}"
+      changed_when: false
+      when: not ansible_check_mode
