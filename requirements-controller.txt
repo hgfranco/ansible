@@ -1,3 +1,5 @@
 # Install with: pipx runpip ansible install -r "$PWD/requirements-controller.txt"
 boto3==1.43.108
 botocore==1.43.108
+kubernetes==35.0.0
+jsonpatch==1.33
