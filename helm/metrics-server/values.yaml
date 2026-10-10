@@ -1,0 +1,23 @@
+# One replica is sufficient for this cluster; this is not an HA configuration.
+replicas: 1
+hostNetwork:
+  enabled: false
+defaultArgs:
+  - --cert-dir=/tmp
+  - --kubelet-preferred-address-types=InternalIP
+  - --kubelet-use-node-status-port
+  - --metric-resolution=15s
+# The playbook controls the kubelet certificate compatibility flag separately.
+args: []
+resources:
+  requests:
+    cpu: 100m
+    memory: 200Mi
+# Trust Metrics Server's generated serving certificate through the APIService CA.
+tls:
+  type: helm
+  helm:
+    lookup: true
+    certDurationDays: 365
+apiService:
+  insecureSkipTLSVerify: false
