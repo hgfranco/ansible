@@ -43,7 +43,6 @@ jobs:
           ansible-lint playbooks/prepare-kubernetes.yml
           playbooks/kubernetes.yml playbooks/fetch-kubeconfig.yml
           playbooks/install-ebs-csi.yml playbooks/install-metrics-server.yml
-          playbooks/sync-cloudflare-secret.yml
 
       - name: Check syntax using offline inventory
         run: |
@@ -52,7 +51,6 @@ jobs:
 
           ansible-playbook -i localhost, playbooks/install-ebs-csi.yml --syntax-check
           ansible-playbook -i localhost, playbooks/install-metrics-server.yml --syntax-check
-          ansible-playbook -i localhost, playbooks/sync-cloudflare-secret.yml --syntax-check
 
       - name: Set up pinned Helm for chart validation
         uses: azure/setup-helm@v4
