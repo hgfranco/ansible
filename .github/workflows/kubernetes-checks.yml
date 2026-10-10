@@ -43,6 +43,7 @@ jobs:
           ansible-lint playbooks/prepare-kubernetes.yml
           playbooks/kubernetes.yml playbooks/fetch-kubeconfig.yml
           playbooks/install-ebs-csi.yml playbooks/install-metrics-server.yml
+          playbooks/install-load-balancer-controller.yml
 
       - name: Check syntax using offline inventory
         run: |
@@ -51,6 +52,7 @@ jobs:
 
           ansible-playbook -i localhost, playbooks/install-ebs-csi.yml --syntax-check
           ansible-playbook -i localhost, playbooks/install-metrics-server.yml --syntax-check
+          ansible-playbook -i localhost, playbooks/install-load-balancer-controller.yml --syntax-check
 
       - name: Set up pinned Helm for chart validation
         uses: azure/setup-helm@v4
@@ -79,6 +81,12 @@ jobs:
           ansible-playbook -i localhost, playbooks/install-metrics-server.yml --tags metrics_server_repository
           ansible-playbook -i localhost, playbooks/install-metrics-server.yml --tags metrics_server_repository | tee "$RUNNER_TEMP/metrics-repository-repeat.txt"
           python -c 'import pathlib, re, sys; text = pathlib.Path(sys.argv[1]).read_text(); assert re.search(r"localhost\s+:.*changed=0.*failed=0", text), text' "$RUNNER_TEMP/metrics-repository-repeat.txt"
+
+      - name: Render and validate the pinned AWS Load Balancer Controller chart
+        run: |
+          helm repo add eks https://aws.github.io/eks-charts
+          helm template aws-load-balancer-controller eks/aws-load-balancer-controller --version 3.6.0 --namespace kube-system --kube-version 1.35.9 --values helm/aws-load-balancer-controller/values.yaml --set clusterName=kubernetes --set region=us-east-1 --set vpcId=vpc-0123456789abcdef0 > "$RUNNER_TEMP/load-balancer-controller.yaml"
+          python tests/validate_load_balancer_chart.py "$RUNNER_TEMP/load-balancer-controller.yaml"
 
       - name: Download verified containerd binary for configuration validation
         env:

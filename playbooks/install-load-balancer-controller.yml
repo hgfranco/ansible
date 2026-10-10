@@ -1,0 +1,155 @@
+---
+- name: Install AWS Load Balancer Controller for the kubeadm cluster
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    load_balancer_controller_chart_version: "3.6.0"
+    load_balancer_controller_repo_url: https://aws.github.io/eks-charts
+    load_balancer_controller_cluster_name: kubernetes
+    load_balancer_controller_region: us-east-1
+    load_balancer_controller_kubeconfig: "{{ lookup('ansible.builtin.env', 'HOME') }}/.kube/kubernetes-admin.conf"
+    load_balancer_controller_timeout: 300s
+  tasks:
+    - name: Check the cluster kubeconfig exists
+      ansible.builtin.stat:
+        path: "{{ load_balancer_controller_kubeconfig }}"
+      register: load_balancer_controller_kubeconfig_stat
+
+    - name: Require the selected cluster kubeconfig
+      ansible.builtin.assert:
+        that:
+          - load_balancer_controller_kubeconfig_stat.stat.isreg | default(false)
+        fail_msg: Fetch the kubeconfig and start the SSH tunnel before running this playbook.
+
+    - name: Discover the Terraform-managed cluster VPC through AWS CLI
+      ansible.builtin.command:
+        argv:
+          - aws
+          - ec2
+          - describe-vpcs
+          - --region
+          - "{{ load_balancer_controller_region }}"
+          - --filters
+          - "Name=tag:Name,Values={{ load_balancer_controller_cluster_name }}-vpc"
+          - "Name=tag:Project,Values={{ load_balancer_controller_cluster_name }}"
+          - Name=tag:ManagedBy,Values=Terraform
+          - --query
+          - Vpcs[].VpcId
+          - --output
+          - json
+      register: load_balancer_controller_vpcs
+      changed_when: false
+      check_mode: false
+
+    - name: Require exactly one cluster VPC
+      ansible.builtin.assert:
+        that:
+          - load_balancer_controller_vpcs.stdout | from_json | length == 1
+        fail_msg: Expected one VPC matching the Terraform cluster tags.
+
+    - name: Remember the discovered VPC
+      ansible.builtin.set_fact:
+        load_balancer_controller_vpc_id: "{{ (load_balancer_controller_vpcs.stdout | from_json)[0] }}"
+
+    - name: Read running Terraform-managed EC2 node identities
+      ansible.builtin.command:
+        argv:
+          - aws
+          - ec2
+          - describe-instances
+          - --region
+          - "{{ load_balancer_controller_region }}"
+          - --filters
+          - "Name=vpc-id,Values={{ load_balancer_controller_vpc_id }}"
+          - "Name=tag:Project,Values={{ load_balancer_controller_cluster_name }}"
+          - Name=tag:ManagedBy,Values=Terraform
+          - Name=tag:Role,Values=control-plane,worker
+          - Name=instance-state-name,Values=running
+          - --query
+          - 'Reservations[].Instances[].{id:InstanceId,az:Placement.AvailabilityZone,private_ip:PrivateIpAddress,name:Tags[?Key==`Name`].Value|[0]}'
+          - --output
+          - json
+      register: load_balancer_controller_instances
+      changed_when: false
+      check_mode: false
+
+    - name: Read registered Kubernetes Nodes
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ load_balancer_controller_kubeconfig }}"
+        api_version: v1
+        kind: Node
+      register: load_balancer_controller_nodes
+
+    - name: Validate Node and EC2 identities before changing provider IDs
+      ansible.builtin.set_fact:
+        load_balancer_controller_node_identities: >-
+          {{ load_balancer_controller_nodes.resources
+             | aws_node_provider_ids(load_balancer_controller_instances.stdout | from_json) }}
+
+    - name: Reconcile each kubeadm Node AWS provider ID
+      kubernetes.core.k8s:
+        kubeconfig: "{{ load_balancer_controller_kubeconfig }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Node
+          metadata:
+            name: "{{ item.name }}"
+          spec:
+            providerID: "{{ item.provider_id }}"
+      loop: "{{ load_balancer_controller_node_identities }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Read registered Helm repositories
+      ansible.builtin.command:
+        argv: [helm, repo, list, --output, yaml]
+      register: load_balancer_controller_repositories
+      changed_when: false
+      failed_when: >-
+        load_balancer_controller_repositories.rc != 0 and
+        'no repositories to show' not in load_balancer_controller_repositories.stderr
+      check_mode: false
+
+    - name: Register the official AWS controller chart repository
+      kubernetes.core.helm_repository:
+        name: eks
+        repo_url: "{{ load_balancer_controller_repo_url }}"
+        force_update: >-
+          {{ ((load_balancer_controller_repositories.stdout | from_yaml | default([], true)
+               | selectattr('name', 'equalto', 'eks') | first | default({}))
+               .get('url', load_balancer_controller_repo_url)) != load_balancer_controller_repo_url }}
+
+    - name: Install or reconcile the pinned AWS Load Balancer Controller
+      kubernetes.core.helm:
+        release_name: aws-load-balancer-controller
+        release_namespace: kube-system
+        chart_ref: eks/aws-load-balancer-controller
+        chart_version: "{{ load_balancer_controller_chart_version }}"
+        kubeconfig: "{{ load_balancer_controller_kubeconfig }}"
+        release_values: >-
+          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../helm/aws-load-balancer-controller/values.yaml')
+             | from_yaml
+             | combine({'clusterName': load_balancer_controller_cluster_name,
+                        'region': load_balancer_controller_region,
+                        'vpcId': load_balancer_controller_vpc_id}) }}
+        update_repo_cache: true
+        reset_values: true
+        wait: true
+        timeout: "{{ load_balancer_controller_timeout }}"
+
+    - name: Verify the controller Deployment is available
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - "--kubeconfig={{ load_balancer_controller_kubeconfig }}"
+          - rollout
+          - status
+          - deployment/aws-load-balancer-controller
+          - --namespace=kube-system
+          - "--timeout={{ load_balancer_controller_timeout }}"
+      changed_when: false
+      when: not ansible_check_mode
