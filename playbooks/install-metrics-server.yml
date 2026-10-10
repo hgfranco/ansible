@@ -64,10 +64,13 @@
         chart_ref: metrics-server/metrics-server
         chart_version: "{{ metrics_server_chart_version }}"
         kubeconfig: "{{ metrics_server_kubeconfig }}"
-        values_files:
-          - "{{ playbook_dir }}/../helm/metrics-server/values.yaml"
-        release_values:
-          args: "{{ ['--kubelet-insecure-tls'] if metrics_server_kubelet_insecure_tls | bool else [] }}"
+        # Pass one merged dictionary: the module's default comparison does not
+        # combine values_files with release_values when checking an existing release.
+        release_values: >-
+          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../helm/metrics-server/values.yaml')
+             | from_yaml
+             | combine({'args': ['--kubelet-insecure-tls']
+                        if metrics_server_kubelet_insecure_tls | bool else []}) }}
         update_repo_cache: true
         reset_values: true
         wait: true
