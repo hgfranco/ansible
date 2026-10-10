@@ -129,6 +129,10 @@ This cluster uses EC2 instance-role credentials and an IMDSv2 hop limit of 1.
 The pinned chart has no controller hostNetwork value, so the post-renderer enables
 host networking and ClusterFirstWithHostNet DNS on its controller Deployment.
 This gives the driver IMDS access without increasing the node metadata hop limit.
+The renderer also moves the controller health endpoint and named probe port to
+9810. The node driver uses 9808 and its registrar uses 9809; distinct ports let
+the controller and node driver share a worker's host network. CI checks that their
+rendered host ports do not overlap.
 The Linux node plugin is privileged because it mounts disks on the hosts.
 
 The node role is shared by the current cluster nodes. Use a dedicated workload
