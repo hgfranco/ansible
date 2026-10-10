@@ -7,6 +7,7 @@
   vars:
     ansible_python_interpreter: "{{ ansible_playbook_python }}"
     metrics_server_chart_version: "3.14.0"
+    metrics_server_chart_repo_url: https://kubernetes-sigs.github.io/metrics-server
     metrics_server_kubeconfig: "{{ lookup('ansible.builtin.env', 'HOME') }}/.kube/kubernetes-admin.conf"
     metrics_server_timeout: 300s
     # Current kubeadm nodes use self-signed serving certificates.
@@ -32,10 +33,29 @@
           metrics_server_kubelet_insecure_tls=false for nodes with trusted serving certificates.
       when: metrics_server_kubelet_insecure_tls | bool
 
+    - name: Read registered Helm repositories
+      ansible.builtin.command:
+        argv: [helm, repo, list, --output, yaml]
+      register: metrics_server_repositories
+      changed_when: false
+      failed_when: >-
+        metrics_server_repositories.rc != 0 and
+        'no repositories to show' not in metrics_server_repositories.stderr
+      check_mode: false
+      tags: [metrics_server_repository]
+
     - name: Register the official Metrics Server chart repository
       kubernetes.core.helm_repository:
         name: metrics-server
-        repo_url: https://kubernetes-sigs.github.io/metrics-server/
+        repo_url: "{{ metrics_server_chart_repo_url }}"
+        # The module normalizes trailing slashes; Helm's manual command does not.
+        # Replace an existing entry only when its saved URL differs.
+        force_update: >-
+          {{ ((metrics_server_repositories.stdout | from_yaml | default([], true)
+               | selectattr('name', 'equalto', 'metrics-server') | first
+               | default({})).get('url', metrics_server_chart_repo_url))
+             != metrics_server_chart_repo_url }}
+      tags: [metrics_server_repository]
 
     - name: Install or reconcile the pinned Metrics Server release
       kubernetes.core.helm:

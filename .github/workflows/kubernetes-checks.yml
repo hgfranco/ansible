@@ -72,6 +72,14 @@ jobs:
           helm template metrics-server metrics-server/metrics-server --version 3.14.0 --namespace kube-system --kube-version 1.35.9 --values helm/metrics-server/values.yaml --set 'args[0]=--kubelet-insecure-tls' > "$RUNNER_TEMP/metrics-kubeadm.yaml"
           python tests/validate_metrics_chart.py "$RUNNER_TEMP/metrics-kubeadm.yaml" --kubeadm
 
+      - name: Verify an existing Metrics Server repository can be reconciled
+        run: |
+          # Simulate the manual registration that previously broke the playbook.
+          helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ --force-update
+          ansible-playbook -i localhost, playbooks/install-metrics-server.yml --tags metrics_server_repository
+          ansible-playbook -i localhost, playbooks/install-metrics-server.yml --tags metrics_server_repository | tee "$RUNNER_TEMP/metrics-repository-repeat.txt"
+          python -c 'import pathlib, re, sys; text = pathlib.Path(sys.argv[1]).read_text(); assert re.search(r"localhost\\s+:.*changed=0.*failed=0", text), text' "$RUNNER_TEMP/metrics-repository-repeat.txt"
+
       - name: Download verified containerd binary for configuration validation
         env:
           RUNTIME_DIRECTORY: ${{ runner.temp }}/containerd-validation
