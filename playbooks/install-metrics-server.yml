@@ -1,0 +1,80 @@
+---
+- name: Install Metrics Server from the controller machine
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    metrics_server_chart_version: "3.14.0"
+    metrics_server_kubeconfig: "{{ lookup('ansible.builtin.env', 'HOME') }}/.kube/kubernetes-admin.conf"
+    metrics_server_timeout: 300s
+    # Current kubeadm nodes use self-signed serving certificates.
+    # Set false once kubelets have CA-signed certificates with matching IP SANs.
+    metrics_server_kubelet_insecure_tls: true
+  tasks:
+    - name: Check the local cluster kubeconfig exists
+      ansible.builtin.stat:
+        path: "{{ metrics_server_kubeconfig }}"
+      register: metrics_server_kubeconfig_stat
+
+    - name: Require the selected cluster kubeconfig
+      ansible.builtin.assert:
+        that:
+          - metrics_server_kubeconfig_stat.stat.isreg | default(false)
+        fail_msg: Fetch the cluster kubeconfig and start the SSH tunnel before installing Metrics Server.
+
+    - name: Explain the current kubelet certificate compatibility setting
+      ansible.builtin.debug:
+        msg: >-
+          Kubelet certificate verification is disabled for the current kubeadm setup.
+          This affects Metrics Server-to-kubelet connections only. Set
+          metrics_server_kubelet_insecure_tls=false for nodes with trusted serving certificates.
+      when: metrics_server_kubelet_insecure_tls | bool
+
+    - name: Register the official Metrics Server chart repository
+      kubernetes.core.helm_repository:
+        name: metrics-server
+        repo_url: https://kubernetes-sigs.github.io/metrics-server/
+
+    - name: Install or reconcile the pinned Metrics Server release
+      kubernetes.core.helm:
+        release_name: metrics-server
+        release_namespace: kube-system
+        chart_ref: metrics-server/metrics-server
+        chart_version: "{{ metrics_server_chart_version }}"
+        kubeconfig: "{{ metrics_server_kubeconfig }}"
+        values_files:
+          - "{{ playbook_dir }}/../helm/metrics-server/values.yaml"
+        release_values:
+          args: "{{ ['--kubelet-insecure-tls'] if metrics_server_kubelet_insecure_tls | bool else [] }}"
+        update_repo_cache: true
+        reset_values: true
+        wait: true
+        timeout: "{{ metrics_server_timeout }}"
+
+    - name: Wait for the Metrics API to become available
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - "--kubeconfig={{ metrics_server_kubeconfig }}"
+          - wait
+          - --for=condition=Available
+          - apiservice/v1beta1.metrics.k8s.io
+          - "--timeout={{ metrics_server_timeout }}"
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Verify node resource metrics are available
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - "--kubeconfig={{ metrics_server_kubeconfig }}"
+          - top
+          - nodes
+      register: metrics_server_node_metrics
+      changed_when: false
+      retries: 12
+      delay: 10
+      until: metrics_server_node_metrics.rc == 0
+      when: not ansible_check_mode

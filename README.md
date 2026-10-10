@@ -149,6 +149,63 @@ be verified against the cluster after review.
 - [Upstream installation and IMDS requirements](https://github.com/kubernetes-sigs/aws-ebs-csi-driver/blob/v1.66.1/docs/install.md)
 - [Helm module](https://docs.ansible.com/projects/ansible/latest/collections/kubernetes/core/helm_module.html)
 
+## Metrics Server for resource troubleshooting
+
+This optional cluster add-on enables `kubectl top` and CPU/memory-based HPA.
+It supports CKA resource troubleshooting and autoscaling exercises; it does not
+create AWS services or change application replica counts. Install chart 3.14.0
+(Metrics Server 0.9.0) with the pinned Helm 4.3.0 and existing collections.
+
+From this repository root with the SSH tunnel running:
+
+~~~bash
+ansible-playbook -i localhost, playbooks/install-metrics-server.yml
+~~~
+
+The playbook explicitly uses ~/.kube/kubernetes-admin.conf, waits for the Helm
+release and Metrics API, and retries node metrics while the first samples arrive.
+Override the kubeconfig with `-e metrics_server_kubeconfig=/absolute/path/to/config`.
+Repeat the command to check reconciliation, then use:
+
+~~~bash
+kubectl --kubeconfig ~/.kube/kubernetes-admin.conf top nodes
+kubectl --kubeconfig ~/.kube/kubernetes-admin.conf top pods -n spotify-now-playing
+~~~
+
+The current kubeadm setup uses self-signed kubelet serving certificates.
+The playbook therefore explicitly enables `--kubelet-insecure-tls` for
+Metrics Server-to-kubelet scraping and prints that choice before installation.
+This retains HTTPS and kubelet authentication but skips certificate verification.
+For a reusable setup with trusted kubelet serving certificates and matching IP
+SANs, run with `-e metrics_server_kubelet_insecure_tls=false`.
+Do not carry this compatibility setting into an environment that can verify its
+kubelet certificates. Proper kubelet serving-certificate bootstrapping and CSR
+approval remain a separate cluster configuration task.
+
+The API server-to-Metrics Server connection verifies the serving certificate.
+Helm creates it in a cluster Secret and places its certificate in the APIService
+CA bundle. The chart reuses the Secret on later upgrades. Its validity is 365
+days; it is not automatically renewed, so arrange certificate renewal before
+expiry for a long-lived cluster. Certificates and private keys are not committed.
+
+[values.yaml](helm/metrics-server/values.yaml) keeps one replica and ordinary pod
+networking, avoiding host-port collisions with kubelet. Metrics use internal node
+IPs. One replica is not highly available; metrics are recent resource samples,
+not historical monitoring. CI renders both TLS modes and checks the actual chart,
+but live scraping and a repeat installation must be verified on the cluster.
+
+If installation fails, inspect rather than uninstall:
+
+~~~bash
+kubectl --kubeconfig ~/.kube/kubernetes-admin.conf get pods -n kube-system -l app.kubernetes.io/name=metrics-server
+kubectl --kubeconfig ~/.kube/kubernetes-admin.conf logs -n kube-system deployment/metrics-server
+kubectl --kubeconfig ~/.kube/kubernetes-admin.conf describe apiservice v1beta1.metrics.k8s.io
+~~~
+
+- [Metrics Server requirements and compatibility](https://github.com/kubernetes-sigs/metrics-server)
+- [Pinned Helm chart](https://github.com/kubernetes-sigs/metrics-server/tree/metrics-server-helm-chart-3.14.0/charts/metrics-server)
+- [Kubeadm serving-certificate configuration](https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-certs/#enabling-signed-kubelet-serving-certificates)
+
 ## Run one stage at a time
 
 The commands below are for an approved manual run. GitHub Actions does not execute
