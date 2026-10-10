@@ -206,6 +206,54 @@ kubectl --kubeconfig ~/.kube/kubernetes-admin.conf describe apiservice v1beta1.m
 - [Pinned Helm chart](https://github.com/kubernetes-sigs/metrics-server/tree/metrics-server-helm-chart-3.14.0/charts/metrics-server)
 - [Kubeadm serving-certificate configuration](https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-certs/#enabling-signed-kubelet-serving-certificates)
 
+## Cloudflare connector token sync
+
+This AWS integration reads the tunnel token created by Terraform and reconciles
+the Kubernetes Secret. It supports the public-site setup; the Deployment and
+Secret concepts are relevant to CKA, while the AWS token retrieval is infrastructure
+automation.
+
+Install the controller dependencies and collections from the repository root:
+
+~~~bash
+pipx runpip ansible install -r "$PWD/requirements-controller.txt"
+ansible-galaxy collection install -r requirements.yml
+~~~
+
+With the cluster running, the SSH tunnel open, and the spotify-now-playing
+namespace already created:
+
+~~~bash
+ansible-playbook -i localhost, playbooks/sync-cloudflare-secret.yml
+~~~
+
+The playbook uses ~/.kube/kubernetes-admin.conf explicitly and your controller's
+normal AWS credentials. It reads the JSON secret
+cloudflare/spotify-now-playing/kubernetes/tunnel in us-east-1 and writes its
+TUNNEL_TOKEN key to the Opaque Secret cloudflare-tunnel in spotify-now-playing.
+The AWS identity needs secretsmanager:GetSecretValue for that source secret
+(and kms:Decrypt if you configure a customer-managed encryption key).
+It does not need a Cloudflare API token.
+
+Secret values are hidden from Ansible output and diffs, never written to a local
+file, and never included in a last-applied annotation. Kubernetes still stores
+the Secret in cluster state; base64 encoding is not encryption.
+An unchanged repeat run should report changed=0. Re-run this command after a
+token change; it is an on-demand sync, not a continuously running controller.
+If a running connector reads the token through an environment variable, restart
+its Deployment after updating the Secret.
+
+The connector Deployment remains a separate step. It should reference
+cloudflare-tunnel/TUNNEL_TOKEN and carry access=spotify in this namespace to
+match the application's ingress NetworkPolicy. This playbook does not create
+or restart that Deployment.
+
+Override the defaults with cloudflare_secret_region, cloudflare_secret_source,
+cloudflare_secret_namespace, cloudflare_secret_name, or cloudflare_secret_kubeconfig
+using Ansible extra variables. CI checks syntax and lint without reading AWS secrets
+or writing to a cluster; verify the first sync and an unchanged repeat run against
+the selected cluster.
+
 ## Run one stage at a time
 
 The commands below are for an approved manual run. GitHub Actions does not execute
@@ -289,7 +337,8 @@ the first approved cluster run is still needed to verify runtime behavior.
 Tests use documentation-only public IPs. AWS credentials and SSH keys stay
 outside Git. Join tokens expire after 15 minutes, are hidden from logs, and are
 revoked after each join attempt. Kubeconfigs stay outside the repo with mode 0600.
-Application secrets can use AWS Secrets Manager or Parameter Store later.
+The Cloudflare connector token is synced from AWS Secrets Manager with the separate
+playbook above. Other application secrets remain outside Git.
 
 ## References
 
