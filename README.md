@@ -206,6 +206,78 @@ kubectl --kubeconfig ~/.kube/kubernetes-admin.conf describe apiservice v1beta1.m
 - [Pinned Helm chart](https://github.com/kubernetes-sigs/metrics-server/tree/metrics-server-helm-chart-3.14.0/charts/metrics-server)
 - [Kubeadm serving-certificate configuration](https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-certs/#enabling-signed-kubelet-serving-certificates)
 
+## AWS Load Balancer Controller
+
+This optional AWS integration installs pinned chart/controller 3.6.0 on the current
+kubeadm cluster. Apply the Terraform controller IAM policy and its node-role
+attachment first. Two tagged public subnets are already managed by Terraform.
+The installation itself does not create an ALB; an application Ingress is a
+separate CKA routing exercise, with AWS-specific annotations.
+
+From the repository root with all cluster instances running and the SSH tunnel open:
+
+~~~bash
+pipx runpip ansible install -r "$PWD/requirements-controller.txt"
+ansible-galaxy collection install -r requirements.yml
+ansible-playbook -i localhost, playbooks/install-load-balancer-controller.yml
+~~~
+
+AWS CLI, kubectl and Helm must be available in PATH. Discovery uses the AWS CLI
+with your current profile rather than a controller-side AWS SDK lookup, avoiding
+the macOS fork crash seen during secret sync. No access keys are stored in Git
+or passed to Pods. The discovery identity needs ec2:DescribeVpcs and
+ec2:DescribeInstances. The kubeconfig requires permission to read/patch Nodes
+and install the Helm chart's cluster resources.
+
+The playbook finds one VPC using Name=kubernetes-vpc, Project=kubernetes and
+ManagedBy=Terraform. It matches registered Nodes to running instances in that VPC
+using private IP addresses and Name tags. Missing, ambiguous, or conflicting
+identities fail before mutations. It patches spec.providerID to the AWS
+availability-zone/instance identifier so instance targets can be registered;
+a matching repeat run preserves those IDs. It is deliberately intended for
+Terraform-managed kubeadm Nodes with these tags, not an existing EKS installation.
+
+The controller uses the current node IAM role and host networking to access
+IMDSv2 while preserving the node metadata hop limit of 1. Explicit AWS region and
+VPC ID avoid metadata introspection for discovery. Two host-network replicas are
+placed on different nodes; keep at least two eligible nodes available.
+The probes, metrics and webhook use ports 61779, 8080 and 9443, respectively.
+The existing between-node security group allows control-plane webhook traffic.
+A separate controller workload identity is the preferred approach for future EKS.
+
+Calico VXLAN Pod IPs are outside the VPC subnet ranges, so this setup uses
+instance targets. The application Service must become NodePort, and the Ingress
+must select class alb. Do not configure IP targets for these overlay addresses.
+NetworkPolicy, HTTPS and public DNS remain separate application/certificate steps.
+
+[values.yaml](helm/aws-load-balancer-controller/values.yaml) disables automatic
+mutation of LoadBalancer Services and optional WAF/Shield integrations. Ingress
+class alb is explicitly created. Default AWS resource tags identify controller
+ownership rather than Terraform ownership. The chart reuses its webhook TLS
+Secret on upgrades; its generated certificate still needs renewal planning for
+a long-lived installation. Do not commit certificates or credentials.
+
+Repeat the playbook and verify changed=0, then check:
+
+~~~bash
+kubectl --kubeconfig ~/.kube/kubernetes-admin.conf get deployment aws-load-balancer-controller -n kube-system
+kubectl --kubeconfig ~/.kube/kubernetes-admin.conf get ingressclass alb
+~~~
+
+Available controller replicas confirm installation, not successful ALB creation.
+When troubleshooting, inspect controller logs and application Ingress events.
+The initial install applies chart CRDs; controller version upgrades need a reviewed
+CRD upgrade procedure because Helm upgrade does not update existing CRDs.
+
+Override load_balancer_controller_cluster_name, load_balancer_controller_region,
+load_balancer_controller_kubeconfig or load_balancer_controller_timeout with extra
+variables. CI checks syntax/lint, Node identity validation, and actual pinned chart
+rendering without AWS credentials or a live cluster. Live installation, repeat-run
+reconciliation and ALB provisioning must be verified separately.
+
+- [Upstream installation guide](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/deploy/installation/)
+- [Official chart](https://github.com/aws/eks-charts/tree/master/stable/aws-load-balancer-controller)
+
 ## Run one stage at a time
 
 The commands below are for an approved manual run. GitHub Actions does not execute

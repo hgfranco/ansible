@@ -1,0 +1,36 @@
+# Current kubeadm cluster uses node-role credentials with IMDSv2 hop limit 1.
+hostNetwork: true
+dnsPolicy: ClusterFirstWithHostNet
+replicaCount: 2
+keepTLSSecret: true
+defaultTargetType: instance
+createIngressClassResource: true
+ingressClass: alb
+enableServiceMutatorWebhook: false
+enableShield: false
+enableWaf: false
+enableWafv2: false
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+# Host-network replicas cannot share listening ports on the same node.
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/instance: aws-load-balancer-controller
+        topologyKey: kubernetes.io/hostname
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 0
+    maxUnavailable: 1
+podDisruptionBudget:
+  maxUnavailable: 1
+defaultTags:
+  ManagedBy: AWSLoadBalancerController
