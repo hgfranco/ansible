@@ -6,7 +6,14 @@ import yaml
 
 def validate(path):
     with open(path, encoding="utf-8") as stream:
-        documents = list(yaml.safe_load_all(stream))
+        rendered = list(yaml.safe_load_all(stream))
+    # Helm emits IngressClass and its parameters inside a Kubernetes List.
+    documents = []
+    for document in rendered:
+        if document and document.get("kind") == "List":
+            documents.extend(document.get("items", []))
+        elif document:
+            documents.append(document)
     deployments = [
         document for document in documents
         if document and document.get("kind") == "Deployment"
