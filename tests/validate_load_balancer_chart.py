@@ -27,10 +27,13 @@ def validate(path):
     args = controller["args"]
     for argument in [
         "--cluster-name=kubernetes", "--aws-region=us-east-1",
-        "--aws-vpc-id=vpc-0123456789abcdef0", "--default-target-type=instance",
+        "--aws-vpc-id=vpc-0123456789abcdef0",
         "--enable-shield=false", "--enable-waf=false", "--enable-wafv2=false",
     ]:
         assert argument in args, (argument, args)
+    # The official chart omits the flag for the controller default, instance.
+    target_args = [arg for arg in args if arg.startswith("--default-target-type=")]
+    assert target_args in ([], ["--default-target-type=instance"]), target_args
     assert controller["resources"]["requests"]["memory"] == "128Mi"
     for container in containers:
         for env in container.get("env", []):
